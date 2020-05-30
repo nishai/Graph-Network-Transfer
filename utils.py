@@ -1,5 +1,7 @@
 import torch
+import copy
 from sklearn.decomposition import PCA
+from torch_geometric.utils import train_test_split_edges
 
 def reduce_dim(data, dim):
     """
@@ -21,5 +23,16 @@ def reduce_dim_collect_dataset(datasets, dim):
     for ds in datasets:
         for data in ds:
             new_dataset.append(reduce_dim(data, dim))
+
+    return new_dataset
+
+
+def gvae_split_dataset(dataset):
+    new_dataset = []
+
+    for data in dataset:
+        data.train_mask = data.val_mask = data.test_mask = data.y = None
+        data = train_test_split_edges(data)
+        new_dataset.append(data)
 
     return new_dataset

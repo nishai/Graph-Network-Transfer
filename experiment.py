@@ -8,11 +8,10 @@ import torch_geometric
 # from torch_geometric.data import DataLoader
 from torch_geometric.nn import VGAE
 from torch_geometric.datasets import Planetoid, PPI, Reddit
-from torch_geometric.utils import train_test_split_edges
 from tqdm import tqdm
 from sklearn.metrics import f1_score, auc, average_precision_score
 from models import  GCN, GVAE_Encoder, GraphSAGE, GAT
-from utils import reduce_dim_collect_dataset
+from utils import reduce_dim_collect_dataset, gvae_split_dataset
 
 
 """
@@ -79,6 +78,9 @@ elif args.exp == 3:
 
 n_classes = exp_target_dataset[0].num_classes
 exp_target_dataset = reduce_dim_collect_dataset(exp_target_dataset, lowest_dim)
+
+if args.model == 'gvae':
+    exp_target_dataset = gvae_split_dataset(exp_target_dataset)
 # TODO: transfer and meta datasets
 
 """
@@ -110,13 +112,11 @@ for exp_num in range(args.num_exps):
                         n_classes=exp_hyperparams['target_classes']
                     ).to(device)
         elif args.model == 'gvae':
-            model = VGAE(Encoder(
+            model = VGAE(GVAE_Encoder(
                         hidden_dim=exp_hyperparams['hidden_dim'],
                         n_features=exp_hyperparams['n_features'],
                         n_classes=exp_hyperparams['target_classes']
                     )).to(device)
-
-            # VGAE TRAIN TEST SPLIT SOMEWHERE !!!
 
         optimizer = torch.optim.Adam(model.parameters(), lr=exp_hyperparams['learning_rate'])
 
