@@ -1,0 +1,6 @@
+
+.DS_Store
+Notebooks
+old
+.ipynb_checkpoints
+.comet.config
