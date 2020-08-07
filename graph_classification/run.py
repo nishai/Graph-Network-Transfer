@@ -58,9 +58,9 @@ Data
 dataset = PygGraphPropPredDataset(name='ogbg-molpcba')
 split_idx = dataset.get_idx_split()
 
-train_loader = DataLoader(dataset[split_idx["train"]], batch_size=32, shuffle=True)
-valid_loader = DataLoader(dataset[split_idx["valid"]], batch_size=32, shuffle=False)
-test_loader = DataLoader(dataset[split_idx["test"]], batch_size=32, shuffle=False)
+train_loader = DataLoader(dataset[split_idx["train"]], batch_size=args.batch_size, shuffle=True)
+valid_loader = DataLoader(dataset[split_idx["valid"]], batch_size=args.batch_size, shuffle=False)
+test_loader = DataLoader(dataset[split_idx["test"]], batch_size=args.batch_size, shuffle=False)
 
 evaluator = Evaluator('ogbg-molpcba')
 
@@ -73,7 +73,7 @@ Helpers
 def train(model, device, loader, optimizer, task_type):
     model.train()
 
-    num_batches = len(loader) / 32
+    num_batches = len(loader) / args.batch_size
     total_loss = 0.0
 
     for step, batch in enumerate(tqdm(loader, desc="Training", leave=False)):
@@ -154,7 +154,7 @@ if  args.type == 'base':
         print()
         print('Run #{}'.format(run + 1))
 
-        experiment = Experiment(project_name='graph-classification', display_summary_level=0)
+        experiment = Experiment(project_name='graph-classification', display_summary_level=0, auto_param_logging=False)
         experiment.add_tags([args.model, args.type])
         experiment.log_parameters({
             'hidden_dim' : args.hidden_dim,
@@ -181,6 +181,6 @@ if  args.type == 'base':
             valid_perf = eval(model, device, valid_loader, evaluator)
             test_perf = eval(model, device, test_loader, evaluator)
 
-            experiment.log_metric('train_loss', train_perf[dataset.eval_metric], step=epoch)
-            experiment.log_metric('validation_loss', valid_perf[dataset.eval_metric], step=epoch)
-            experiment.log_metric('test_loss', test_perf[dataset.eval_metric], step=epoch)
+            experiment.log_metric('train_prcauc', train_perf[dataset.eval_metric], step=epoch)
+            experiment.log_metric('validation_prcauc', valid_perf[dataset.eval_metric], step=epoch)
+            experiment.log_metric('test_prcauc', test_perf[dataset.eval_metric], step=epoch)
