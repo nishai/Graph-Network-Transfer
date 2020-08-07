@@ -154,7 +154,7 @@ if  args.type == 'base':
         print()
         print('Run #{}'.format(run + 1))
 
-        experiment = Experiment(project_name='graph-classification', display_summary_level=0, auto_param_logging=False)
+        experiment = Experiment(project_name='graph-classification', display_summary_level=0, auto_metric_logging=False)
         experiment.add_tags([args.model, args.type])
         experiment.log_parameters({
             'hidden_dim' : args.hidden_dim,

@@ -2,6 +2,7 @@ from comet_ml import Experiment
 import argparse
 import torch
 from torch import optim, nn
+from torch.cuda.amp import GradScaler, autocast
 from torch.utils.data import Dataset
 from torch_geometric.nn import GCNConv, SAGEConv, GATConv
 import torch_geometric.transforms as T
@@ -112,6 +113,8 @@ if  args.type == 'base':
         optimiser = torch.optim.Adam(model.parameters(), lr=0.01)
         early_stopping = EarlyStopping(patience=25, verbose=False)
 
+        scaler =  GradScaler()
+
         for epoch in tqdm(range(args.epochs)):
             #-----------------------------------
             #   TRAIN
@@ -119,10 +122,13 @@ if  args.type == 'base':
             model.train()
             optimiser.zero_grad()
 
-            out = model(data.x, data.adj_t)[train_idx]
-            loss = F.nll_loss(out, data.y.squeeze(1)[train_idx])
-            loss.backward()
-            optimiser.step()
+            with autocast():
+                out = model(data.x, data.adj_t)[train_idx]
+                loss = F.nll_loss(out, data.y.squeeze(1)[train_idx])
+
+            scaler.scale(loss).backward()
+            scaler.step(optimiser)
+            scaler.update()
 
             experiment.log_metric('train_loss', loss.item(), step=epoch)
 
@@ -206,6 +212,7 @@ elif args.type == 'transfer':
         model.reset_parameters()
         optimiser = torch.optim.Adam(model.parameters(), lr=0.01)
         early_stopping = EarlyStopping(patience=25, verbose=False)
+        scaler =  GradScaler()
 
         for epoch in tqdm(range(args.epochs)):
             #-----------------------------------
@@ -214,10 +221,14 @@ elif args.type == 'transfer':
             model.train()
             optimiser.zero_grad()
 
-            out = model(data.x, data.adj_t)[train_idx]
-            loss = F.nll_loss(out, data.y.squeeze(1)[train_idx])
-            loss.backward()
-            optimiser.step()
+            with autocast():
+                out = model(data.x, data.adj_t)[train_idx]
+                loss = F.nll_loss(out, data.y.squeeze(1)[train_idx])
+
+
+            scaler.scale(loss).backward()
+            scaler.step(optimiser)
+            scaler.update()
 
             experiment.log_metric('train_loss', loss.item(), step=epoch)
 
