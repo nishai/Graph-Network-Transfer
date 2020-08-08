@@ -35,10 +35,10 @@ Parsing arguments
 parser = argparse.ArgumentParser()
 parser.add_argument('--model', type=str, default='gcn')
 parser.add_argument('--type', type=str, default='base')
-parser.add_argument('--runs', type=int, default=30)
+parser.add_argument('--runs', type=int, default=10)
 parser.add_argument('--epochs', type=int, default=100)
 parser.add_argument('--batch_size', type=int, default=32)
-parser.add_argument('--lr', type=float, default=0.01)
+parser.add_argument('--lr', type=float, default=0.001)
 parser.add_argument('--hidden_dim', type=int, default=300)
 parser.add_argument('--num_layers', type=int, default=5)
 
@@ -47,6 +47,7 @@ assert args.model in ['gcn', 'sage', 'gat']
 assert args.type in ['base', 'transfer', 'meta']
 assert args.runs >= 1
 assert args.epochs >= 1
+assert args.batch_size >= 1
 assert args.lr > 0
 assert args.hidden_dim > 0
 assert args.num_layers > 0
@@ -65,7 +66,6 @@ test_loader = DataLoader(dataset[split_idx["test"]], batch_size=args.batch_size,
 evaluator = Evaluator('ogbg-molpcba')
 
 cls_criterion = torch.nn.BCEWithLogitsLoss()
-reg_criterion = torch.nn.MSELoss()
 
 """
 Helpers
@@ -86,10 +86,7 @@ def train(model, device, loader, optimizer, task_type):
             optimizer.zero_grad()
             ## ignore nan targets (unlabeled) when computing training loss.
             is_labeled = batch.y == batch.y
-            if "classification" in task_type:
-                loss = cls_criterion(pred.to(torch.float32)[is_labeled], batch.y.to(torch.float32)[is_labeled])
-            else:
-                loss = reg_criterion(pred.to(torch.float32)[is_labeled], batch.y.to(torch.float32)[is_labeled])
+            loss = cls_criterion(pred.to(torch.float32)[is_labeled], batch.y.to(torch.float32)[is_labeled])
 
             total_loss += loss
 
@@ -147,12 +144,13 @@ if  args.type == 'base':
 
     print(model)
 
-    model.reset_parameters()
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
-
     for run in range(args.runs):
         print()
         print('Run #{}'.format(run + 1))
+
+        model.reset_parameters()
+        optimizer = optim.Adam(model.parameters(), args.lr)
+        early_stopping = EarlyStopping(patience=7, verbose=False)
 
         experiment = Experiment(project_name='graph-classification', display_summary_level=0, auto_metric_logging=False)
         experiment.add_tags([args.model, args.type])
@@ -184,3 +182,8 @@ if  args.type == 'base':
             experiment.log_metric('train_prcauc', train_perf[dataset.eval_metric], step=epoch)
             experiment.log_metric('validation_prcauc', valid_perf[dataset.eval_metric], step=epoch)
             experiment.log_metric('test_prcauc', test_perf[dataset.eval_metric], step=epoch)
+
+            early_stopping(-valid_perf[dataset.eval_metric], model)
+            if early_stopping.early_stop:
+                print('Early stopping')
+                break
