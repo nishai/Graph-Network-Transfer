@@ -4,7 +4,7 @@ import torch
 from torch import optim, nn
 from torch.cuda.amp import GradScaler, autocast
 from torch.utils.data import Dataset
-from torch_geometric.nn import GCNConv, SAGEConv, GATConv
+from torch_geometric.nn import GCNConv, SAGEConv, GATConv, GINConv
 import torch_geometric.transforms as T
 from torch_geometric.data import Data
 from torch_geometric.utils import subgraph
@@ -20,39 +20,29 @@ networks  = {
     'gcn': GCN,
     'sage': SAGE,
     'gat': GAT,
+    'gin': GIN,
 }
 
 layers  = {
     'gcn': GCNConv,
     'sage': SAGEConv,
-    'gat': GATConv,
+    'gat': GAT,
+    'gin': GINConv,
 }
 
-"""
-Parsing arguments
-"""
-parser = argparse.ArgumentParser()
-parser.add_argument('--model', type=str, default='gcn')
-parser.add_argument('--type', type=str, default='base')
-parser.add_argument('--runs', type=int, default=30)
-parser.add_argument('--epochs', type=int, default=2000)
-parser.add_argument('--lr', type=float, default=0.01)
-parser.add_argument('--hidden_dim', type=int, default=256)
-parser.add_argument('--num_layers', type=int, default=3)
-
-args = parser.parse_args()
-assert args.model in ['gcn', 'sage', 'gat']
-assert args.type in ['base', 'transfer', 'meta']
-assert args.runs >= 1
-assert args.epochs >= 1
-assert args.lr > 0
-assert args.hidden_dim > 0
-assert args.num_layers > 0
+exp_description = {
+    'base': 'Random seed initialisation',
+    'transfer': 'Transferred from pretrained Arxiv model',
+    'self-transfer': 'Transferred from MAG source split',
+    'meta': 'MAML'
+}
 
 
-"""
-Data
-"""
+# ---------------------------------------------------
+# Data
+# ---------------------------------------------------
+
+# LOAD MAG
 dataset = PygNodePropPredDataset(name="ogbn-mag")
 rel_data = dataset[0]
 
@@ -62,44 +52,142 @@ data = Data(
     y=rel_data.y_dict['paper']
 ).to(device)
 
-if args.type in ['base', 'transfer']:
-    data = T.ToSparseTensor()(data)
-    data.adj_t = data.adj_t.to_symmetric()
+# SPLIT INTO SOURCE & TARGET SET
+years = rel_data.node_year_dict['paper'].unique()
+source_years = years[:5]
+target_years = years[5:]
 
-split_idx = dataset.get_idx_split()
-train_idx = split_idx['train']['paper'].to(device)
-valid_idx = split_idx['valid']['paper'].to(device)
+source_nodes = torch.cat([
+                    torch.where(rel_data.node_year_dict['paper'] == year)[0]
+                    for year in source_years
+                ])
 
+target_nodes = torch.cat([
+                    torch.where(rel_data.node_year_dict['paper'] == year)[0]
+                    for year in target_years
+                ])
+
+source_nodes, _ = source_nodes.sort()
+target_nodes, _ = target_nodes.sort()
+
+source_edge_index, _ = subgraph(source_nodes, data.edge_index, relabel_nodes=True)
+target_edge_index, _ = subgraph(target_nodes, data.edge_index, relabel_nodes=True)
+
+source_data = Data(
+                x=rel_data.x_dict['paper'][source_nodes],
+                edge_index=source_edge_index,
+                y=rel_data.y_dict['paper'][source_nodes]
+            )
+
+target_data = Data(
+                x=rel_data.x_dict['paper'][target_nodes],
+                edge_index=target_edge_index,
+                y=rel_data.y_dict['paper'][target_nodes]
+            )
+
+data = target_data.to(device) # Train on Target split
+
+# MAG EVALUATOR
 evaluator = Evaluator(name="ogbn-mag")
 
 
-# ---------------------------------------------------
-# Base Experiment: MAG - Random Seed
-# ---------------------------------------------------
-if  args.type == 'base':
+
+def train(model, optimiser, data):
+    # TRAIN
+    model.train()
+    optimiser.zero_grad()
+
+    try:
+        out = model(data.x, data.adj_t)
+    except:
+        out = model(data.x, data.edge_index)
+
+    loss = F.nll_loss(out, data.y.squeeze(1))
+
+    loss.backward()
+    optimiser.step()
+
+    # EVAL
+    y_pred = out.argmax(dim=-1, keepdim=True)
+    acc = evaluator.eval({
+            'y_true': data.y,
+            'y_pred': y_pred,
+        })['acc']
+
+    return loss.item(), acc
+
+
+
+def main():
+    # ---------------------------------------------------
+    # Parsing arguments
+    # ---------------------------------------------------
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--model', type=str, default='gcn')
+    parser.add_argument('--type', type=str, default='base')
+    parser.add_argument('--runs', type=int, default=10)
+    parser.add_argument('--epochs', type=int, default=2000)
+    parser.add_argument('--lr', type=float, default=0.01)
+    parser.add_argument('--hidden_dim', type=int, default=256)
+    parser.add_argument('--num_layers', type=int, default=3)
+
+    args = parser.parse_args()
+    assert args.model in ['gcn', 'sage', 'gat', 'gin']
+    assert args.type in ['base', 'transfer', 'self-transfer', 'meta']
+    assert args.runs >= 1
+    assert args.epochs >= 1
+    assert args.lr > 0
+    assert args.hidden_dim > 0
+    assert args.num_layers > 0
+
+    # ---------------------------------------------------
+    # MODEL
+    # ---------------------------------------------------
+    if args.type != 'transfer':
+        model = networks[args.model](
+            in_channels=data.num_features,
+            hidden_channels=args.hidden_dim,
+            out_channels=dataset.num_classes,
+            num_layers=args.num_layers
+        ).to(device)
+    else:
+        model = networks[args.model](
+            in_channels=128,
+            hidden_channels=256,
+            out_channels=40,
+            num_layers=3
+        )
+
+        model.load_state_dict(
+            torch.load( './saved_models/arxiv/{}_arxiv.pth'.format(args.model) )
+        )
+        model.convs[-1] = layers[args.model](256, dataset.num_classes)
+        model = model.to(device)
+
+
+    # ---------------------------------------------------
+    #  EXPERIMENT DETAILS
+    # ---------------------------------------------------
     print('Node Classification Experiment')
-    print('MAG task with random initialisation')
+    print('MAG task')
+    print(exp_description[args.type])
     print('----------------------------------------------')
     print('Model: {}'.format(args.model))
     print('Number of runs: {}'.format(args.runs))
     print('Number of epochs: {}'.format(args.epochs))
     print('Learning rate: {}'.format(args.lr))
     print()
-
-    model = networks[args.model](
-        in_channels=data.num_features,
-        hidden_channels=args.hidden_dim,
-        out_channels=dataset.num_classes,
-        num_layers=args.num_layers
-    ).to(device)
-
     print(model)
 
+
+    # ---------------------------------------------------
+    # EXPERIMENT LOOP
+    # ---------------------------------------------------
     for run in range(args.runs):
         print()
         print('Run #{}'.format(run + 1))
 
-        experiment = Experiment(project_name='node-classification', display_summary_level=0)
+        experiment = Experiment(project_name='node-classification', display_summary_level=0, auto_metric_logging=False)
         experiment.add_tags([args.model, args.type])
         experiment.log_parameters({
             'hidden_dim' : args.hidden_dim,
@@ -109,161 +197,22 @@ if  args.type == 'base':
             'num_epochs': args.epochs,
         })
 
-        model.reset_parameters()
-        optimiser = torch.optim.Adam(model.parameters(), lr=0.01)
-        early_stopping = EarlyStopping(patience=25, verbose=False)
+        if args.type == 'base':
+            model.reset_parameters()
+        elif args.type == 'self-transfer':
+            model.load_state_dict(
+                torch.load( './saved_models/source/{}_source_mag.pth'.format(args.model) )
+            )
 
-        scaler =  GradScaler()
-
-        for epoch in tqdm(range(args.epochs)):
-            #-----------------------------------
-            #   TRAIN
-            # ----------------------------------
-            model.train()
-            optimiser.zero_grad()
-
-            with autocast():
-                out = model(data.x, data.adj_t)[train_idx]
-                loss = F.nll_loss(out, data.y.squeeze(1)[train_idx])
-
-            scaler.scale(loss).backward()
-            scaler.step(optimiser)
-            scaler.update()
-
-            experiment.log_metric('train_loss', loss.item(), step=epoch)
-
-            #-----------------------------------
-            #   EVAL
-            # ----------------------------------
-            with torch.no_grad():
-                model.eval()
-
-                out = model(data.x, data.adj_t)
-                y_pred = out.argmax(dim=-1, keepdim=True)
-
-                train_acc = evaluator.eval({
-                    'y_true': data.y[split_idx['train']['paper']],
-                    'y_pred': y_pred[split_idx['train']['paper']],
-                })['acc']
-
-                valid_acc = evaluator.eval({
-                    'y_true': data.y[split_idx['valid']['paper']],
-                    'y_pred': y_pred[split_idx['valid']['paper']],
-                })['acc']
-
-                test_acc = evaluator.eval({
-                    'y_true': data.y[split_idx['test']['paper']],
-                    'y_pred': y_pred[split_idx['test']['paper']],
-                })['acc']
-
-                experiment.log_metric('train_accuracy', train_acc, step=epoch)
-                experiment.log_metric('validation_accuracy', valid_acc, step=epoch)
-                experiment.log_metric('test_accuracy', test_acc, step=epoch)
-
-                valid_loss = F.nll_loss(out[valid_idx], data.y.squeeze(1)[valid_idx])
-                experiment.log_metric('validation_loss', valid_loss.item(), step=epoch)
-
-                early_stopping(valid_loss, model)
-                if early_stopping.early_stop:
-                    print('Early stopping')
-                    break
-
-
-# ---------------------------------------------------
-# Transfer Experiment: Arxiv -> MAG
-# ---------------------------------------------------
-elif args.type == 'transfer':
-    print('Node Classification Experiment')
-    print('MAG task with transferred Arxiv model')
-    print('----------------------------------------------')
-    print('Model: {}'.format(args.model))
-    print('Number of runs: {}'.format(args.runs))
-    print('Number of epochs: {}'.format(args.epochs))
-    print('Learning rate: {}'.format(args.lr))
-    print()
-
-    model = networks[args.model](
-        in_channels=128,
-        hidden_channels=256,
-        out_channels=40,
-        num_layers=3
-    )
-    model.load_state_dict(torch.load( './saved_models/{}_arxiv.pth'.format(args.model) ))
-    model.convs[-1] = layers[args.model](256, dataset.num_classes)
-    model = model.to(device)
-
-    print('Transferred Arxiv model for MAG...')
-    print(model)
-
-    for run in range(args.runs):
-        print()
-        print('Run #{}'.format(run + 1))
-
-        experiment = Experiment(project_name='node-classification', display_summary_level=0)
-        experiment.add_tags([args.model, args.type])
-        experiment.log_parameters({
-            'hidden_dim' : args.hidden_dim,
-            'num_features' : data.num_features,
-            'num_classes' : dataset.num_classes,
-            'learning_rate': args.lr,
-            'num_epochs': args.epochs,
-        })
-
-        model.reset_parameters()
-        optimiser = torch.optim.Adam(model.parameters(), lr=0.01)
-        early_stopping = EarlyStopping(patience=25, verbose=False)
-        scaler =  GradScaler()
+        optimiser = torch.optim.Adam(model.parameters(), lr=args.lr)
 
         for epoch in tqdm(range(args.epochs)):
-            #-----------------------------------
-            #   TRAIN
-            # ----------------------------------
-            model.train()
-            optimiser.zero_grad()
+            train_loss, acc = train(model, optimiser, data)
 
-            with autocast():
-                out = model(data.x, data.adj_t)[train_idx]
-                loss = F.nll_loss(out, data.y.squeeze(1)[train_idx])
+            experiment.log_metric('train_loss', train_loss, step=epoch)
+            experiment.log_metric('accuracy', acc, step=epoch)
 
 
-            scaler.scale(loss).backward()
-            scaler.step(optimiser)
-            scaler.update()
 
-            experiment.log_metric('train_loss', loss.item(), step=epoch)
-
-            #-----------------------------------
-            #   EVAL
-            # ----------------------------------
-            with torch.no_grad():
-                model.eval()
-
-                out = model(data.x, data.adj_t)
-                y_pred = out.argmax(dim=-1, keepdim=True)
-
-                train_acc = evaluator.eval({
-                    'y_true': data.y[split_idx['train']['paper']],
-                    'y_pred': y_pred[split_idx['train']['paper']],
-                })['acc']
-
-                valid_acc = evaluator.eval({
-                    'y_true': data.y[split_idx['valid']['paper']],
-                    'y_pred': y_pred[split_idx['valid']['paper']],
-                })['acc']
-
-                test_acc = evaluator.eval({
-                    'y_true': data.y[split_idx['test']['paper']],
-                    'y_pred': y_pred[split_idx['test']['paper']],
-                })['acc']
-
-                experiment.log_metric('train_accuracy', train_acc, step=epoch)
-                experiment.log_metric('validation_accuracy', valid_acc, step=epoch)
-                experiment.log_metric('test_accuracy', test_acc, step=epoch)
-
-                valid_loss = F.nll_loss(out[valid_idx], data.y.squeeze(1)[valid_idx])
-                experiment.log_metric('validation_loss', valid_loss.item(), step=epoch)
-
-                early_stopping(valid_loss, model)
-                if early_stopping.early_stop:
-                    print('Early stopping')
-                    break
+if __name__ == "__main__":
+    main()
