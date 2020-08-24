@@ -161,7 +161,12 @@ def main():
         model.load_state_dict(
             torch.load( './saved_models/arxiv/{}_arxiv.pth'.format(args.model) )
         )
-        model.convs[-1] = layers[args.model](256, dataset.num_classes)
+
+        if args.model != 'gin':
+            model.convs[-1] = layers[args.model](256, dataset.num_classes)
+        else:
+            model.convs[-1] = layers[args.model](Linear(256, dataset.num_classes))
+
         model = model.to(device)
 
 
