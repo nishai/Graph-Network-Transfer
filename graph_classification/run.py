@@ -4,15 +4,12 @@ import torch
 from torch import optim, nn
 import torch.nn.functional as F
 from torch_geometric.data import DataLoader
-# from torch.cuda.amp import GradScaler, autocast
 from torch.utils.data import Dataset
 from torch_geometric.data import Data
-# from torch_geometric.utils import subgraph
 from models import *
 from pytorchtools import EarlyStopping
 from ogb.graphproppred import PygGraphPropPredDataset , Evaluator
 from tqdm import tqdm
-# import learn2learn as l2l
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -20,63 +17,49 @@ networks  = {
     'gcn': GCN,
     'sage': SAGE,
     'gat': GAT,
+    'gin': GIN,
 }
 
 layers  = {
     'gcn': GCNConv,
     'sage': SAGEConv,
-    'gat': GATConv,
+    'gat': GAT,
+    'gin': GINConv,
 }
 
+exp_description = {
+    'base': 'Random seed initialisation',
+    'transfer': 'Transferred from pretrained Mol-BBBP model',
+    'self-transfer': 'Transferred from Mol-HIV source split',
+    'meta': 'MAML'
+}
 
-"""
-Parsing arguments
-"""
-parser = argparse.ArgumentParser()
-parser.add_argument('--model', type=str, default='gcn')
-parser.add_argument('--type', type=str, default='base')
-parser.add_argument('--runs', type=int, default=10)
-parser.add_argument('--epochs', type=int, default=100)
-parser.add_argument('--batch_size', type=int, default=32)
-parser.add_argument('--lr', type=float, default=0.001)
-parser.add_argument('--hidden_dim', type=int, default=300)
-parser.add_argument('--num_layers', type=int, default=5)
+# ---------------------------------------------------
+# Data
+# ---------------------------------------------------
 
-args = parser.parse_args()
-assert args.model in ['gcn', 'sage', 'gat']
-assert args.type in ['base', 'transfer', 'meta']
-assert args.runs >= 1
-assert args.epochs >= 1
-assert args.batch_size >= 1
-assert args.lr > 0
-assert args.hidden_dim > 0
-assert args.num_layers > 0
+dataset = PygGraphPropPredDataset(name='ogbg-molhiv')
 
+split_idx = len(dataset) // 2
+source_dataset = dataset[:split_idx]
+target_dataset = dataset[split_idx:]
 
-"""
-Data
-"""
-dataset = PygGraphPropPredDataset(name='ogbg-molpcba')
-split_idx = dataset.get_idx_split()
+BATCH_SIZE = 32
 
-train_loader = DataLoader(dataset[split_idx["train"]], batch_size=args.batch_size, shuffle=True)
-valid_loader = DataLoader(dataset[split_idx["valid"]], batch_size=args.batch_size, shuffle=False)
-test_loader = DataLoader(dataset[split_idx["test"]], batch_size=args.batch_size, shuffle=False)
+source_loader = DataLoader(source_dataset, batch_size=BATCH_SIZE, shuffle=True)
+target_loader = DataLoader(target_dataset, batch_size=BATCH_SIZE, shuffle=True)
 
-evaluator = Evaluator('ogbg-molpcba')
-
+evaluator = Evaluator('ogbg-molhiv')
 cls_criterion = torch.nn.BCEWithLogitsLoss()
 
-"""
-Helpers
-"""
+
 def train(model, device, loader, optimizer, task_type):
     model.train()
 
-    num_batches = len(loader) / args.batch_size
+    num_batches = len(loader) / BATCH_SIZE
     total_loss = 0.0
 
-    for step, batch in enumerate(tqdm(loader, desc="Training", leave=False)):
+    for step, batch in enumerate(loader):
         batch = batch.to(device)
 
         if batch.x.shape[0] == 1 or batch.batch[-1] == 0:
@@ -101,7 +84,7 @@ def eval(model, device, loader, evaluator):
     y_true = []
     y_pred = []
 
-    for step, batch in enumerate(tqdm(loader, desc="Evaluation", leave=False)):
+    for step, batch in enumerate(loader):
         batch = batch.to(device)
 
         if batch.x.shape[0] == 1:
@@ -121,20 +104,28 @@ def eval(model, device, loader, evaluator):
     return evaluator.eval(input_dict)
 
 
-# ---------------------------------------------------
-# Base Experiment: Mol-PCBA - Random Seed
-# ---------------------------------------------------
-if  args.type == 'base':
-    print('Graph Classification Experiment')
-    print('Mol-PCBA task with random initialisation')
-    print('----------------------------------------------')
-    print('Model: {}'.format(args.model))
-    print('Number of runs: {}'.format(args.runs))
-    print('Number of epochs: {}'.format(args.epochs))
-    print('Batch-size: {}'.format(args.batch_size))
-    print('Learning rate: {}'.format(args.lr))
-    print()
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--model', type=str, default='gcn')
+    parser.add_argument('--type', type=str, default='base')
+    parser.add_argument('--runs', type=int, default=10)
+    parser.add_argument('--epochs', type=int, default=200)
+    parser.add_argument('--lr', type=float, default=0.001)
+    parser.add_argument('--hidden_dim', type=int, default=300)
+    parser.add_argument('--num_layers', type=int, default=5)
 
+    args = parser.parse_args()
+    assert args.model in ['gcn', 'sage', 'gat', 'gin']
+    assert args.type in ['base', 'transfer', 'self-transfer', 'meta']
+    assert args.runs >= 1
+    assert args.epochs >= 1
+    assert args.lr > 0
+    assert args.hidden_dim > 0
+    assert args.num_layers > 0
+
+    # ---------------------------------------------------
+    # MODEL
+    # ---------------------------------------------------
     model = networks[args.model](
         in_channels=dataset.num_features,
         hidden_channels=args.hidden_dim,
@@ -142,15 +133,26 @@ if  args.type == 'base':
         num_conv_layers=args.num_layers
     ).to(device)
 
+    # ---------------------------------------------------
+    #  EXPERIMENT DETAILS
+    # ---------------------------------------------------
+    print('Graph Classification Experiment')
+    print('Mol_HIV task')
+    print(exp_description[args.type])
+    print('----------------------------------------------')
+    print('Model: {}'.format(args.model))
+    print('Number of runs: {}'.format(args.runs))
+    print('Number of epochs: {}'.format(args.epochs))
+    print('Learning rate: {}'.format(args.lr))
+    print()
     print(model)
 
+    # ---------------------------------------------------
+    # EXPERIMENT LOOP
+    # ---------------------------------------------------
     for run in range(args.runs):
         print()
         print('Run #{}'.format(run + 1))
-
-        model.reset_parameters()
-        optimizer = optim.Adam(model.parameters(), args.lr)
-        early_stopping = EarlyStopping(patience=7, verbose=False)
 
         experiment = Experiment(project_name='graph-classification', display_summary_level=0, auto_metric_logging=False)
         experiment.add_tags([args.model, args.type])
@@ -158,32 +160,29 @@ if  args.type == 'base':
             'hidden_dim' : args.hidden_dim,
             'num_features' : dataset.num_features,
             'num_classes' : dataset.num_tasks,
-            'batch_size': args.batch_size,
             'learning_rate': args.lr,
             'num_epochs': args.epochs,
         })
 
-        for epoch in range(args.epochs):
-            print('Epoch #{}'.format(epoch))
+        if args.type == 'base':
+            model.reset_parameters()
+        elif args.type == 'transfer':
+            model.load_state_dict(
+                torch.load( './saved_models/molbbbp/{}_molbbbp.pth'.format(args.model) )
+            )
+        elif args.type == 'self-transfer':
+            model.load_state_dict(
+                torch.load( './saved_models/source/{}_source_molhiv.pth'.format(args.model) )
+            )
 
-            # ----------------------------------
-            # TRAINING
-            # ----------------------------------
-            train_loss = train(model, device, train_loader, optimizer, dataset.task_type)
+        optimizer = optim.Adam(model.parameters(), args.lr)
+
+        for epoch in tqdm(range(args.epochs)):
+            train_loss = train(model, device, target_loader, optimizer, dataset.task_type)
+            train_performance = eval(model, device, source_loader, evaluator)
+
             experiment.log_metric('train_loss', train_loss.item(), step=epoch)
+            experiment.log_metric('train_roc-auc', train_performance[dataset.eval_metric], step=epoch)
 
-            # ----------------------------------
-            # EVALUATION
-            # ----------------------------------
-            train_perf = eval(model, device, train_loader, evaluator)
-            valid_perf = eval(model, device, valid_loader, evaluator)
-            test_perf = eval(model, device, test_loader, evaluator)
-
-            experiment.log_metric('train_prcauc', train_perf[dataset.eval_metric], step=epoch)
-            experiment.log_metric('validation_prcauc', valid_perf[dataset.eval_metric], step=epoch)
-            experiment.log_metric('test_prcauc', test_perf[dataset.eval_metric], step=epoch)
-
-            early_stopping(-valid_perf[dataset.eval_metric], model)
-            if early_stopping.early_stop:
-                print('Early stopping')
-                break
+if __name__ == "__main__":
+    main()
