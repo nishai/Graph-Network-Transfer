@@ -27,8 +27,8 @@ Hidden dim: 256
 
 Output dim: 349
 
-| File            | Model     | Train accuracy |
-|-----------------|-----------|----------------|
-| `gcn_arxiv.pth` | GCN       | 0.274          |
-| `sage_arxiv.pth`| GraphSAGE | 0.287          |
-| `gin_arxiv.pth` | GIN       | 0.280          |
+| File                 | Model     | Train accuracy |
+|----------------------|-----------|----------------|
+| `gcn_source_mag.pth` | GCN       | 0.274          |
+| `sage_source_mag.pth`| GraphSAGE | 0.287          |
+| `gin_source_mag.pth` | GIN       | 0.280          |
