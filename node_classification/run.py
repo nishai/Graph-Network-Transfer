@@ -42,6 +42,18 @@ exp_description = {
 # Data
 # ---------------------------------------------------
 
+# LOAD Arxiv
+arxiv_dataset = PygNodePropPredDataset(name='ogbn-arxiv')
+arxiv_data = arxiv_dataset[0]
+
+arxiv_data = T.ToSparseTensor()(arxiv_data)
+arxiv_data.adj_t = arxiv_data.adj_t.to_symmetric()
+arxiv_data = arxiv_data.to(device)
+
+arxiv_split_idx = arxiv_dataset.get_idx_split()
+arxiv_evaluator = Evaluator(name='ogbn-arxiv')
+# ---------------------------------------------------
+
 # LOAD MAG
 dataset = PygNodePropPredDataset(name="ogbn-mag")
 rel_data = dataset[0]
@@ -89,8 +101,7 @@ data = target_data.to(device) # Train on Target split
 
 # MAG EVALUATOR
 evaluator = Evaluator(name="ogbn-mag")
-
-
+# ---------------------------------------------------
 
 def train(model, optimiser, data):
     # TRAIN
@@ -116,6 +127,38 @@ def train(model, optimiser, data):
 
     return loss.item(), acc
 
+
+def pretrain_arxiv(model, optimiser, data, split_idx, evaluator, model_name, epochs=1000):
+    best_valid_acc = 0.0
+    train_idx = split_idx['train']
+
+    for epoch in tqdm(range(epochs)):
+        # TRAIN
+        model.train()
+        optimiser.zero_grad()
+
+        out = model(data.x, data.adj_t)[train_idx]
+        loss = F.nll_loss(out, data.y.squeeze(1)[train_idx])
+
+        loss.backward()
+        optimiser.step()
+
+        # EVAL
+        with torch.no_grad():
+            model.eval()
+            out = model(data.x, data.adj_t)
+            y_pred = out.argmax(dim=-1, keepdim=True)
+
+            valid_acc = evaluator.eval({
+                'y_true': data.y[split_idx['valid']],
+                'y_pred': y_pred[split_idx['valid']],
+            })['acc']
+
+            if valid_acc > best_valid_acc:
+                best_valid_acc = valid_acc
+                torch.save(model.state_dict(), 'arxiv_models/{}_arxiv.pth'.format(model_name))
+
+    return best_valid_acc
 
 
 def main():
@@ -143,31 +186,13 @@ def main():
     # ---------------------------------------------------
     # MODEL
     # ---------------------------------------------------
-    if args.type != 'transfer':
-        model = networks[args.model](
-            in_channels=data.num_features,
-            hidden_channels=args.hidden_dim,
-            out_channels=dataset.num_classes,
-            num_layers=args.num_layers
-        ).to(device)
-    else:
-        model = networks[args.model](
-            in_channels=128,
-            hidden_channels=256,
-            out_channels=40,
-            num_layers=3
-        )
-
-        model.load_state_dict(
-            torch.load( './saved_models/arxiv/{}_arxiv.pth'.format(args.model) )
-        )
-
-        if args.model != 'gin':
-            model.convs[-1] = layers[args.model](256, dataset.num_classes)
-        else:
-            model.convs[-1] = layers[args.model](Linear(256, dataset.num_classes))
-
-        model = model.to(device)
+    # USE MAG MODEL
+    model = networks[args.model](
+        in_channels=data.num_features,
+        hidden_channels=args.hidden_dim,
+        out_channels=dataset.num_classes,
+        num_layers=args.num_layers
+    ).to(device)
 
 
     # ---------------------------------------------------
@@ -176,7 +201,7 @@ def main():
     print('Node Classification Experiment')
     print('MAG task')
     print(exp_description[args.type])
-    print('----------------------------------------------')
+    print('---------------------------------------------------------------------')
     print('Model: {}'.format(args.model))
     print('Number of runs: {}'.format(args.runs))
     print('Number of epochs: {}'.format(args.epochs))
@@ -190,8 +215,47 @@ def main():
     # ---------------------------------------------------
     for run in range(args.runs):
         print()
+        print('---------------------------------------------------------------------')
         print('Run #{}'.format(run + 1))
+        print()
 
+        # Model initialisation
+        if args.type == 'base':
+            model.reset_parameters()
+
+        elif args.type  == 'transfer':
+            # PRETRAIN ON ARXIV
+            model = networks[args.model](
+                in_channels=128,
+                hidden_channels=256,
+                out_channels=40,
+                num_layers=3
+            ).to(device)
+            arxiv_optimiser = torch.optim.Adam(model.parameters(), lr=0.001)
+
+            print('Pretraining model on Arxiv...')
+            best_val_acc = pretrain_arxiv(model, arxiv_optimiser, arxiv_data, arxiv_split_idx, arxiv_evaluator, args.model)
+            print('Validation accuracy: {:.3}'.format(best_val_acc))
+
+            # load best validation acc model
+            model.load_state_dict(
+                torch.load( 'arxiv_models/{}_arxiv.pth'.format(args.model) )
+            )
+
+            # replace final layer
+            if args.model != 'gin':
+                model.convs[-1] = layers[args.model](256, dataset.num_classes)
+            else:
+                model.convs[-1] = layers[args.model](Linear(256, dataset.num_classes))
+
+            model = model.to(device)
+
+        elif args.type == 'self-transfer':
+            model.load_state_dict(
+                torch.load( './saved_models/source/{}_source_mag.pth'.format(args.model) )
+            )
+
+        # COMET EXPERIMENT
         experiment = Experiment(project_name='node-classification', display_summary_level=0, auto_metric_logging=False)
         experiment.add_tags([args.model, args.type])
         experiment.log_parameters({
@@ -202,13 +266,8 @@ def main():
             'num_epochs': args.epochs,
         })
 
-        if args.type == 'base':
-            model.reset_parameters()
-        elif args.type == 'self-transfer':
-            model.load_state_dict(
-                torch.load( './saved_models/source/{}_source_mag.pth'.format(args.model) )
-            )
-
+        # MAG TRAINING
+        print('Training on MAG')
         optimiser = torch.optim.Adam(model.parameters(), lr=args.lr)
 
         for epoch in tqdm(range(args.epochs)):
