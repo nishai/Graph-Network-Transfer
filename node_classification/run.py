@@ -161,6 +161,34 @@ def pretrain_arxiv(model, optimiser, data, split_idx, evaluator, model_name, epo
     return best_valid_acc
 
 
+def pretrain_mag_source(model, optimiser, data, model_name, epochs=1000):
+    best_acc = 0.0
+
+    for epoch in tqdm(range(epochs)):
+        # TRAIN
+        model.train()
+        optimiser.zero_grad()
+
+        out = model(data.x, data.edge_index)
+        loss = F.nll_loss(out, data.y.squeeze(1))
+
+        loss.backward()
+        optimiser.step()
+
+        # EVAL
+        y_pred = out.argmax(dim=-1, keepdim=True)
+        acc = evaluator.eval({
+                'y_true': data.y,
+                'y_pred': y_pred,
+            })['acc']
+
+        if acc > best_acc:
+            best_acc = acc
+            torch.save(model.state_dict(), 'source/{}_mag_source.pth'.format(model_name))
+
+    return best_acc
+
+
 def main():
     # ---------------------------------------------------
     # Parsing arguments
@@ -251,8 +279,16 @@ def main():
             model = model.to(device)
 
         elif args.type == 'self-transfer':
+            # PRETRAIN ON SOURCE SPLIT
+            model.reset_parameters()
+            source_optimiser = torch.optim.Adam(model.parameters(), lr=0.01)
+
+            print('Pretraining model on MAG Source split')
+            best_acc = pretrain_mag_source(model, source_optimiser, source_data.to(device), args.model)
+            print('Best accuracy: {:.3}'.format(best_acc))
+
             model.load_state_dict(
-                torch.load( './saved_models/source/{}_source_mag.pth'.format(args.model) )
+                torch.load( 'source/{}_mag_source.pth'.format(args.model) )
             )
 
         # COMET EXPERIMENT
@@ -266,7 +302,7 @@ def main():
             'num_epochs': args.epochs,
         })
 
-        # MAG TRAINING
+        # MAG TARGET TRAINING
         print('Training on MAG')
         optimiser = torch.optim.Adam(model.parameters(), lr=args.lr)
 
@@ -276,7 +312,7 @@ def main():
             experiment.log_metric('train_loss', train_loss, step=epoch)
             experiment.log_metric('accuracy', acc, step=epoch)
 
-
+        experiment.end()
 
 if __name__ == "__main__":
     main()
