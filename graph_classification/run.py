@@ -38,6 +38,17 @@ exp_description = {
 # Data
 # ---------------------------------------------------
 
+# Mol-BBBP
+bbbp_dataset = PygGraphPropPredDataset(name='ogbg-molbbbp')
+bbbp_split_idx = bbbp_dataset.get_idx_split()
+
+train_loader = DataLoader(bbbp_dataset[bbbp_split_idx["train"]], batch_size=32, shuffle=True)
+valid_loader = DataLoader(bbbp_dataset[bbbp_split_idx["valid"]], batch_size=32, shuffle=False)
+test_loader = DataLoader(bbbp_dataset[bbbp_split_idx["test"]], batch_size=32, shuffle=False)
+
+bbbp_evaluator = Evaluator('ogbg-molbbbp')
+
+# Mol-HIV
 dataset = PygGraphPropPredDataset(name='ogbg-molhiv')
 
 split_idx = len(dataset) // 2
@@ -53,7 +64,7 @@ evaluator = Evaluator('ogbg-molhiv')
 cls_criterion = torch.nn.BCEWithLogitsLoss()
 
 
-def train(model, device, loader, optimizer, task_type):
+def train(model, device, loader, optimizer):
     model.train()
 
     num_batches = len(loader) / BATCH_SIZE
@@ -102,6 +113,22 @@ def eval(model, device, loader, evaluator):
     input_dict = {"y_true": y_true, "y_pred": y_pred}
 
     return evaluator.eval(input_dict)
+
+
+def pretrain_molbbbp(model, device, evaluator, optimizer, model_name, epochs=100):
+    best_val_perf = 0.0
+
+    for epoch in tqdm(range(100)):
+        train_loss = train(model, device, train_loader, optimizer)
+
+        valid_perf = eval(model, device, valid_loader, evaluator)
+        valid_rocauc = valid_perf[bbbp_dataset.eval_metric]
+
+        if valid_rocauc > best_val_perf:
+            best_val_perf = valid_rocauc
+            torch.save(model.state_dict(), 'molbbbp_models/{}_molbbbp.pth'.format(model_name))
+
+    return best_val_perf
 
 
 def main():
@@ -154,6 +181,30 @@ def main():
         print()
         print('Run #{}'.format(run + 1))
 
+        # Model initialisation
+        if args.type == 'base':
+            model.reset_parameters()
+
+        elif args.type == 'transfer':
+            # Pretrain on Mol-BBBP
+            model.reset_parameters()
+            bbbp_optimiser = optim.Adam(model.parameters(), lr=0.001)
+
+            print('Pretraining model on Mol-BBBP...')
+            best_val_acc = pretrain_molbbbp(model, device, bbbp_evaluator, bbbp_optimiser, args.model)
+            print('Validation accuracy: {:.3}'.format(best_val_acc))
+
+            model.load_state_dict(
+                torch.load( 'molbbbp_models/{}_molbbbp.pth'.format(args.model) )
+            )
+
+        elif args.type == 'self-transfer':
+            # Pretrain on Mol-HIV Source Split
+            model.load_state_dict(
+                torch.load( './saved_models/source/{}_source_molhiv.pth'.format(args.model) )
+            )
+
+        # Comet Experiment
         experiment = Experiment(project_name='graph-classification', display_summary_level=0, auto_metric_logging=False)
         experiment.add_tags([args.model, args.type])
         experiment.log_parameters({
@@ -164,22 +215,13 @@ def main():
             'num_epochs': args.epochs,
         })
 
-        if args.type == 'base':
-            model.reset_parameters()
-        elif args.type == 'transfer':
-            model.load_state_dict(
-                torch.load( './saved_models/molbbbp/{}_molbbbp.pth'.format(args.model) )
-            )
-        elif args.type == 'self-transfer':
-            model.load_state_dict(
-                torch.load( './saved_models/source/{}_source_molhiv.pth'.format(args.model) )
-            )
-
+        # Mol-HIV Target Training
+        print('Training on Mol-HIV')
         optimizer = optim.Adam(model.parameters(), args.lr)
 
         for epoch in tqdm(range(args.epochs)):
-            train_loss = train(model, device, target_loader, optimizer, dataset.task_type)
-            train_performance = eval(model, device, source_loader, evaluator)
+            train_loss = train(model, device, target_loader, optimizer)
+            train_performance = eval(model, device, target_loader, evaluator)
 
             experiment.log_metric('train_loss', train_loss.item(), step=epoch)
             experiment.log_metric('train_roc-auc', train_performance[dataset.eval_metric], step=epoch)
