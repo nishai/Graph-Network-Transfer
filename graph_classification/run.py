@@ -131,6 +131,21 @@ def pretrain_molbbbp(model, device, evaluator, optimizer, model_name, epochs=100
     return best_val_perf
 
 
+def pretrain_source_molhiv(model, device, evaluator, optimizer, model_name, epochs=100):
+    best_perf = 0.0
+
+    for epoch in tqdm(range(100)):
+        train_loss = train(model, device, source_loader, optimizer)
+        perf = eval(model, device, source_loader, evaluator)
+        rocauc = perf[source_dataset.eval_metric]
+
+        if rocauc > best_perf:
+            best_perf = rocauc
+            torch.save(model.state_dict(), 'molhiv/{}_source_molhiv.pth'.format(model_name))
+
+    return best_perf
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--model', type=str, default='gcn')
@@ -200,8 +215,15 @@ def main():
 
         elif args.type == 'self-transfer':
             # Pretrain on Mol-HIV Source Split
+            model.reset_parameters()
+            source_optimiser = optim.Adam(model.parameters(), lr=0.001)
+
+            print('Pretraining model on Mol-HIV Source Task...')
+            best_val_acc = pretrain_source_molhiv(model, device, evaluator, source_optimiser, args.model)
+            print('Validation accuracy: {:.3}'.format(best_val_acc))
+
             model.load_state_dict(
-                torch.load( './saved_models/source/{}_source_molhiv.pth'.format(args.model) )
+                torch.load( 'molhiv/{}_source_molhiv.pth'.format(args.model) )
             )
 
         # Comet Experiment
@@ -225,6 +247,9 @@ def main():
 
             experiment.log_metric('train_loss', train_loss.item(), step=epoch)
             experiment.log_metric('train_roc-auc', train_performance[dataset.eval_metric], step=epoch)
+
+
+        experiment.end()
 
 if __name__ == "__main__":
     main()
