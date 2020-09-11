@@ -8,7 +8,6 @@ from torch_geometric.nn import GCNConv, SAGEConv, GATConv, GINConv
 import torch_geometric.transforms as T
 from torch_geometric.data import Data
 from torch_geometric.utils import subgraph
-from pytorchtools import EarlyStopping
 from models import *
 from ogb.nodeproppred import PygNodePropPredDataset, Evaluator
 from tqdm import tqdm
@@ -34,6 +33,7 @@ exp_description = {
     'base': 'Random seed initialisation',
     'transfer': 'Transferred from pretrained Arxiv model',
     'self-transfer': 'Transferred from MAG source split',
+    'self-transfer-new-layer': 'Transferred from MAG source split with a new classification layer.',
     'meta': 'MAML'
 }
 
@@ -204,7 +204,7 @@ def main():
 
     args = parser.parse_args()
     assert args.model in ['gcn', 'sage', 'gat', 'gin']
-    assert args.type in ['base', 'transfer', 'self-transfer', 'meta']
+    assert args.type in ['base', 'transfer', 'self-transfer', 'self-transfer-new-layer', 'meta']
     assert args.runs >= 1
     assert args.epochs >= 1
     assert args.lr > 0
@@ -290,6 +290,27 @@ def main():
             model.load_state_dict(
                 torch.load( 'source/{}_mag_source.pth'.format(args.model) )
             )
+
+        elif args.type == 'self-transfer-new-layer':
+            # PRETRAIN ON SOURCE SPLIT - NEW CLASSIFICATION LAYER
+            model.reset_parameters()
+            source_optimiser = torch.optim.Adam(model.parameters(), lr=0.01)
+
+            print('Pretraining model on MAG Source split')
+            best_acc = pretrain_mag_source(model, source_optimiser, source_data.to(device), args.model)
+            print('Best accuracy: {:.3}'.format(best_acc))
+
+            model.load_state_dict(
+                torch.load( 'source/{}_mag_source.pth'.format(args.model) )
+            )
+
+            # replace final layer
+            if args.model != 'gin':
+                model.convs[-1] = layers[args.model](256, dataset.num_classes)
+            else:
+                model.convs[-1] = layers[args.model](Linear(256, dataset.num_classes))
+
+            model = model.to(device)
 
         # COMET EXPERIMENT
         experiment = Experiment(project_name='node-classification', display_summary_level=0, auto_metric_logging=False)
