@@ -14,7 +14,7 @@ def read_graph(path, save_to=None):
         data: the parsed PyG graph
     '''
     # read file
-    f = open('default.graph', 'r')
+    f = open(path, 'r')
     file = f.read().splitlines()
 
     mode = 'vertex'
@@ -36,7 +36,7 @@ def read_graph(path, save_to=None):
                 node_num, node_attr, node_class = line.split(';')
 
                 node_num = int(node_num)
-                node_class = int(node_class) - 1 # shift class number down by one to start at 0
+                node_class = int(node_class)
                 node_attr = [float(attr) for attr in node_attr.split('|')]
 
                 node_attrs[node_num] = node_attr
