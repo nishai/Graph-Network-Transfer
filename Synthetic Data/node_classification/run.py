@@ -148,14 +148,11 @@ def main():
 
         elif args.type in ['configuration_1', 'configuration_2', 'configuration_3']:
             # Pretrain on other benchmark datasets
-            source_data = read_graph('{}.graph'.format(args.type))
-            source_data.to(device)
-
             model.reset_parameters()
             source_optimiser = torch.optim.Adam(model.parameters(), lr=0.01)
 
             print('Pre-training model on ' + args.type)
-            best_acc = pretrain_mag_source(model, source_optimiser, args.type)
+            best_acc = pretrain(model, source_optimiser, args.type)
             print('Best accuracy: {:.3}'.format(best_acc))
 
             model.load_state_dict(
