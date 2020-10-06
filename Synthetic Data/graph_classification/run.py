@@ -34,7 +34,6 @@ BATCH_SIZE=32
 
 target_dataset_dict = torch.load('target_dataset')
 target_dataset = target_dataset_dict['dataset']
-n_classes = target_dataset_dict['n_classes']
 
 target_loader = DataLoader(target_dataset, batch_size=BATCH_SIZE, shuffle=True)
 
@@ -170,10 +169,10 @@ def main():
     print()
     if args.type == 'transfer':
         print('Generator Parameters:')
-        print('\tN={}'.format(args.N))
-        print('\tn={}'.format(args.n))
-        print('\tp={}'.format(args.p))
-        print('\tstd={}'.format(args.std))
+        print('N={}'.format(args.N))
+        print('n={}'.format(args.n))
+        print('p={}'.format(args.p))
+        print('std={}'.format(args.std))
         print()
     print(model)
 
@@ -191,6 +190,27 @@ def main():
         if args.type == 'base':
             # Random init
             model.reset_parameters()
+
+        elif args.type == 'transfer':
+            # Pretrain on other benchmark datasets
+            print('Generating source dataset')
+            params = [
+                {'N': args.N, 'n': args.n, 'p': args.p, 'mean': 0, 'std': args.std} for i in range(20)
+            ]
+            source_dataset, _ = generate_dataset(params)
+            source_loader = DataLoader(source_dataset, batch_size=BATCH_SIZE, shuffle=True)
+            print()
+
+            model.reset_parameters()
+            source_optimiser = torch.optim.Adam(model.parameters(), lr=0.001)
+
+            print('Pre-training model on generated dataset')
+            best_acc = pretrain(model, device, source_loader, source_optimiser)
+            print('Best accuracy: {:.3}'.format(best_acc))
+
+            model.load_state_dict(
+                torch.load( 'source_model.pth' )
+            )
 
         # Comet Experiment
         experiment = Experiment(project_name='graph-classification-synthetic', display_summary_level=0, auto_metric_logging=False)
