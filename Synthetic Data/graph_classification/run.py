@@ -1,3 +1,5 @@
+from comet_ml import Experiment
+import argparse
 import itertools
 import torch
 import networkx as nx
@@ -136,11 +138,11 @@ def main():
     # ---------------------------------------------------
     experiment_tags = [args.model, args.type]
 
-    if args.type = 'transfer':
-        experiment_tags.append('N=' + args.N)
-        experiment_tags.append('n=' + args.n)
-        experiment_tags.append('p=' + args.N)
-        experiment_tags.append('std=' + args.N)
+    if args.type == 'transfer':
+        experiment_tags.append('N={}'.format(args.N))
+        experiment_tags.append('n={}'.format(args.n))
+        experiment_tags.append('p={}'.format(args.p))
+        experiment_tags.append('std={}'.format(args.std))
 
 
     # ---------------------------------------------------
@@ -150,7 +152,7 @@ def main():
         in_channels=10,
         hidden_channels=args.hidden_dim,
         out_channels=20,
-        num_layers=args.num_layers
+        num_conv_layers=args.num_layers
     ).to(device)
 
 
@@ -166,7 +168,7 @@ def main():
     print('Number of epochs: {}'.format(args.epochs))
     print('Learning rate: {}'.format(args.lr))
     print()
-    if args.type = 'transfer':
+    if args.type == 'transfer':
         print('Generator Parameters:')
         print('\tN={}'.format(args.N))
         print('\tn={}'.format(args.n))
@@ -195,8 +197,8 @@ def main():
         experiment.add_tags(experiment_tags)
         experiment.log_parameters({
             'hidden_dim' : args.hidden_dim,
-            'num_features' : target_data.num_features,
-            'num_classes' : len(target_data.y.unique()),
+            'num_features' : 10,
+            'num_classes' : 20,
             'learning_rate': args.lr,
             'num_epochs': args.epochs,
             'generator_params': {
