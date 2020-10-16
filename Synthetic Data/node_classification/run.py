@@ -62,8 +62,8 @@ def train(model, optimiser, data):
     return loss.item(), acc
 
 
-def pretrain(model, optimiser, dataset_name, epochs=1000):
-    source_data = read_graph('benchmark/{}.graph'.format(dataset_name))
+def pretrain(model, optimiser, dataset_name, run, epochs=1000):
+    source_data = read_graph('benchmark/{}/{}.graph'.format(dataset_name, run))
     source_data.to(device)
 
     best_acc = 0.0
@@ -149,10 +149,10 @@ def main():
         elif args.type in ['configuration_1', 'configuration_2', 'configuration_3']:
             # Pretrain on other benchmark datasets
             model.reset_parameters()
-            source_optimiser = torch.optim.Adam(model.parameters(), lr=0.01)
+            source_optimiser = torch.optim.Adam(model.parameters(), lr=args.lr)
 
             print('Pre-training model on ' + args.type)
-            best_acc = pretrain(model, source_optimiser, args.type)
+            best_acc = pretrain(model, source_optimiser, args.type, run)
             print('Best accuracy: {:.3}'.format(best_acc))
 
             model.load_state_dict(
