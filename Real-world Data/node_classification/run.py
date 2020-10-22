@@ -11,7 +11,6 @@ from torch_geometric.utils import subgraph
 from models import *
 from ogb.nodeproppred import PygNodePropPredDataset, Evaluator
 from tqdm import tqdm
-import learn2learn as l2l
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -281,7 +280,7 @@ def main():
         elif args.type == 'self-transfer':
             # PRETRAIN ON SOURCE SPLIT
             model.reset_parameters()
-            source_optimiser = torch.optim.Adam(model.parameters(), lr=0.01)
+            source_optimiser = torch.optim.Adam(model.parameters(), lr=args.lr)
 
             print('Pretraining model on MAG Source split')
             best_acc = pretrain_mag_source(model, source_optimiser, source_data.to(device), args.model)
@@ -294,7 +293,7 @@ def main():
         elif args.type == 'self-transfer-new-layer':
             # PRETRAIN ON SOURCE SPLIT - NEW CLASSIFICATION LAYER
             model.reset_parameters()
-            source_optimiser = torch.optim.Adam(model.parameters(), lr=0.01)
+            source_optimiser = torch.optim.Adam(model.parameters(), lr=args.lr)
 
             print('Pretraining model on MAG Source split')
             best_acc = pretrain_mag_source(model, source_optimiser, source_data.to(device), args.model)
