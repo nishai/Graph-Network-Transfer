@@ -16,14 +16,12 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 networks  = {
     'gcn': GCN,
     'sage': SAGE,
-    'gat': GAT,
     'gin': GIN,
 }
 
 layers  = {
     'gcn': GCNConv,
     'sage': SAGEConv,
-    'gat': GAT,
     'gin': GINConv,
 }
 
