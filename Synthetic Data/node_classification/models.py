@@ -105,18 +105,18 @@ class GIN(torch.nn.Module):
 
         # input layer
         self.convs.append(
-            GINConv(Linear(in_channels, hidden_channels))
+            GINConv(Linear(in_channels, hidden_channels), train_eps=True)
         )
 
         # hidden layers
         for _ in range(num_layers - 2):
             self.convs.append(
-                GINConv(Linear(hidden_channels, hidden_channels))
+                GINConv(Linear(hidden_channels, hidden_channels), train_eps=True)
             )
 
         # output layer
         self.convs.append(
-            GINConv(Linear(hidden_channels, out_channels))
+            GINConv(Linear(hidden_channels, out_channels), train_eps=True)
         )
 
         self.dropout = dropout

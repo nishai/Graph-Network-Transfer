@@ -96,56 +96,13 @@ class GIN(torch.nn.Module):
 
         self.convs = torch.nn.ModuleList()
         self.convs.append(
-            GINConv(Linear(in_channels, hidden_channels))
+            GINConv(Linear(in_channels, hidden_channels), train_eps=True)
         )
 
         for _ in range(num_conv_layers-1):
             self.convs.append(
-                GINConv(Linear(hidden_channels, hidden_channels))
+                GINConv(Linear(hidden_channels, hidden_channels), train_eps=True)
             )
-
-        self.pooling = global_mean_pool
-
-        self.classify = Linear(hidden_channels, out_channels)
-
-        self.dropout = dropout
-
-
-    def reset_parameters(self):
-        for conv in self.convs:
-            conv.reset_parameters()
-
-        self.classify.reset_parameters()
-
-
-    def forward(self, data):
-        x, edge_index = data.x, data.edge_index
-        x = x.float()
-
-        # convs -> node embedding
-        for i, conv in enumerate(self.convs):
-            x = conv(x, edge_index)
-            x = F.relu(x)
-            x = F.dropout(x, p=self.dropout, training=self.training)
-
-        # pooling -> graph embedding
-        x = self.pooling(x, data.batch)
-
-        # linear -> classification
-        x = self.classify(x)
-
-        return x
-
-
-class GAT(torch.nn.Module):
-    def __init__(self, in_channels, hidden_channels, out_channels, num_conv_layers, dropout=0.5):
-        super(GAT, self).__init__()
-
-        self.convs = torch.nn.ModuleList()
-        self.convs.append(GATConv(in_channels, hidden_channels))
-
-        for _ in range(num_conv_layers-1):
-            self.convs.append(GATConv(hidden_channels, hidden_channels))
 
         self.pooling = global_mean_pool
 
