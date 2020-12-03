@@ -258,7 +258,7 @@ def main():
                 out_channels=40,
                 num_layers=3
             ).to(device)
-            arxiv_optimiser = torch.optim.Adam(model.parameters(), lr=0.001)
+            arxiv_optimiser = torch.optim.Adam(model.parameters(), lr=args.lr)
 
             print('Pretraining model on Arxiv...')
             best_val_acc = pretrain_arxiv(model, arxiv_optimiser, arxiv_data, arxiv_split_idx, arxiv_evaluator, args.model)
