@@ -31,7 +31,9 @@ layers  = {
 exp_description = {
     'base': 'Random seed initialisation',
     'transfer': 'Transferred from pretrained Arxiv model',
+    'transfer-damaged': 'Transferred from damaged Arxiv model',
     'self-transfer': 'Transferred from MAG source split',
+    'self-transfer-damaged-new-layer': 'Transferred from damaged MAG source split with a new classification layer.',
     'self-transfer-new-layer': 'Transferred from MAG source split with a new classification layer.',
     'meta': 'MAML'
 }
@@ -101,6 +103,21 @@ data = target_data.to(device) # Train on Target split
 # MAG EVALUATOR
 evaluator = Evaluator(name="ogbn-mag")
 # ---------------------------------------------------
+
+def damage_data(data, percentage=1):
+    print('Damaging data...')
+    print()
+
+    N = data.num_nodes
+    N_damage = int(N * percentage)
+    new_data = deepcopy(data)
+
+    idx_damage = np.random.choice(N, N_damage)
+
+    new_data.x[idx_damage] = torch.randn(N_damage, data.num_features)
+
+    return new_data, idx_damage
+
 
 def train(model, optimiser, data):
     # TRAIN
@@ -203,7 +220,7 @@ def main():
 
     args = parser.parse_args()
     assert args.model in ['gcn', 'sage', 'gat', 'gin']
-    assert args.type in ['base', 'transfer', 'self-transfer', 'self-transfer-new-layer', 'meta']
+    assert args.type in ['base', 'transfer', 'transfer-damaged', 'self-transfer', 'self-transfer-damaged-new-layer', 'self-transfer-new-layer', 'meta']
     assert args.runs >= 1
     assert args.epochs >= 1
     assert args.lr > 0
@@ -250,7 +267,7 @@ def main():
         if args.type == 'base':
             model.reset_parameters()
 
-        elif args.type  == 'transfer':
+        elif args.type  == 'transfer' or args.type=='transfer-damaged':
             # PRETRAIN ON ARXIV
             model = networks[args.model](
                 in_channels=128,
@@ -260,8 +277,15 @@ def main():
             ).to(device)
             arxiv_optimiser = torch.optim.Adam(model.parameters(), lr=args.lr)
 
+
             print('Pretraining model on Arxiv...')
-            best_val_acc = pretrain_arxiv(model, arxiv_optimiser, arxiv_data, arxiv_split_idx, arxiv_evaluator, args.model)
+
+            if args.type=='transfer':
+                best_val_acc = pretrain_arxiv(model, arxiv_optimiser, arxiv_data, arxiv_split_idx, arxiv_evaluator, args.model)
+            elif args.type=='transfer-damaged':
+                arxiv_damaged, _ =  damage_data(arxiv_data)
+                best_val_acc = pretrain_arxiv(model, arxiv_optimiser, arxiv_damaged, arxiv_split_idx, arxiv_evaluator, args.model)
+
             print('Validation accuracy: {:.3}'.format(best_val_acc))
 
             # load best validation acc model
@@ -290,13 +314,19 @@ def main():
                 torch.load( 'source/{}_mag_source.pth'.format(args.model) )
             )
 
-        elif args.type == 'self-transfer-new-layer':
+        elif args.type == 'self-transfer-new-layer' or args.type == 'self-transfer-damaged-new-layer':
             # PRETRAIN ON SOURCE SPLIT - NEW CLASSIFICATION LAYER
             model.reset_parameters()
             source_optimiser = torch.optim.Adam(model.parameters(), lr=args.lr)
 
             print('Pretraining model on MAG Source split')
-            best_acc = pretrain_mag_source(model, source_optimiser, source_data.to(device), args.model)
+
+            if args.type == 'self-transfer-new-layer':
+                best_acc = pretrain_mag_source(model, source_optimiser, source_data.to(device), args.model)
+            elif args.type == 'self-transfer-damaged-new-layer':
+                source_damaged, _ =  damage_data(source_data)
+                best_acc = pretrain_mag_source(model, source_optimiser, source_damaged.to(device), args.model)
+
             print('Best accuracy: {:.3}'.format(best_acc))
 
             model.load_state_dict(
