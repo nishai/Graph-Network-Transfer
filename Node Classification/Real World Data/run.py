@@ -92,7 +92,7 @@ source_data = Data(
                 x=rel_data.x_dict['paper'][source_nodes],
                 edge_index=source_edge_index,
                 y=rel_data.y_dict['paper'][source_nodes]
-            )
+            ).to(device)
 
 target_data = Data(
                 x=rel_data.x_dict['paper'][target_nodes],
