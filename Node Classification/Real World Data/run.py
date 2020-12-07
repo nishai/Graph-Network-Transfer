@@ -11,6 +11,8 @@ from torch_geometric.utils import subgraph
 from models import *
 from ogb.nodeproppred import PygNodePropPredDataset, Evaluator
 from tqdm import tqdm
+from copy import deepcopy
+import numpy as np
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -114,7 +116,7 @@ def damage_data(data, percentage=1):
 
     idx_damage = np.random.choice(N, N_damage)
 
-    new_data.x[idx_damage] = torch.randn(N_damage, data.num_features)
+    new_data.x[idx_damage] = torch.randn(N_damage, data.num_features).to(device)
 
     return new_data, idx_damage
 
@@ -284,6 +286,7 @@ def main():
                 best_val_acc = pretrain_arxiv(model, arxiv_optimiser, arxiv_data, arxiv_split_idx, arxiv_evaluator, args.model)
             elif args.type=='transfer-damaged':
                 arxiv_damaged, _ =  damage_data(arxiv_data)
+                arxiv_damaged.to(device)
                 best_val_acc = pretrain_arxiv(model, arxiv_optimiser, arxiv_damaged, arxiv_split_idx, arxiv_evaluator, args.model)
 
             print('Validation accuracy: {:.3}'.format(best_val_acc))
@@ -325,6 +328,7 @@ def main():
                 best_acc = pretrain_mag_source(model, source_optimiser, source_data.to(device), args.model)
             elif args.type == 'self-transfer-damaged-new-layer':
                 source_damaged, _ =  damage_data(source_data)
+                source_damaged.to(device)
                 best_acc = pretrain_mag_source(model, source_optimiser, source_damaged.to(device), args.model)
 
             print('Best accuracy: {:.3}'.format(best_acc))
