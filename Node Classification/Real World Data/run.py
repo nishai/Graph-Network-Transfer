@@ -92,7 +92,7 @@ source_data = Data(
                 x=rel_data.x_dict['paper'][source_nodes],
                 edge_index=source_edge_index,
                 y=rel_data.y_dict['paper'][source_nodes]
-            ).to(device)
+            )
 
 target_data = Data(
                 x=rel_data.x_dict['paper'][target_nodes],
@@ -113,10 +113,11 @@ def damage_data(data, percentage=1):
     N = data.num_nodes
     N_damage = int(N * percentage)
     new_data = deepcopy(data)
+    new_data.x = new_data.x.cpu()
 
     idx_damage = np.random.choice(N, N_damage)
 
-    new_data.x[idx_damage] = torch.randn(N_damage, data.num_features).to(device)
+    new_data.x[idx_damage] = torch.randn(N_damage, data.num_features)
 
     return new_data, idx_damage
 
