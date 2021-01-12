@@ -28,17 +28,18 @@ exp_description = {
 
 conf_params = {
     'conf1': {
-        'percent_swap': 0,
+        'percent_swap': 0.1,
         'percent_damage': 0
     },
     'conf2': {
-        'percent_swap': 0,
+        'percent_swap': 0.1,
         'percent_damage': 0.95
     },
     'conf3': {
         'percent_swap': 0.95,
         'percent_damage': 0
     },
+    'base': 'N/A'
 }
 
 BATCH_SIZE=64
@@ -48,9 +49,7 @@ BATCH_SIZE=64
 # Data
 # ---------------------------------------------------
 
-target_dataset_dict = torch.load('target_dataset')
-target_dataset = target_dataset_dict['dataset']
-
+target_dataset = torch.load('target_dataset')
 target_loader = DataLoader(target_dataset, batch_size=BATCH_SIZE, shuffle=True)
 
 
@@ -101,7 +100,7 @@ def train(model, device, loader, optimiser):
     return avg_loss.item(), acc
 
 
-def pretrain(model, device, loader, optimiser, epochs=200):
+def pretrain(model, device, loader, optimiser, epochs=500):
     best_acc = 0.0
 
     for epoch in tqdm(range(epochs)):
@@ -127,9 +126,9 @@ def main():
     parser.add_argument('--model', type=str, default='gcn')
     parser.add_argument('--type', type=str, default='base')
     parser.add_argument('--runs', type=int, default=10)
-    parser.add_argument('--epochs', type=int, default=200)
+    parser.add_argument('--epochs', type=int, default=500)
     parser.add_argument('--lr', type=float, default=0.001)
-    parser.add_argument('--hidden_dim', type=int, default=300)
+    parser.add_argument('--hidden_dim', type=int, default=50)
     parser.add_argument('--num_layers', type=int, default=5)
 
     args = parser.parse_args()
@@ -160,7 +159,7 @@ def main():
     #  Experiment details
     # ---------------------------------------------------
     print('Graph Classification Experiment - Synthetic Data')
-    print('Target task: Custom 20-Class Classification Target Task')
+    print('Target task: Configuration 4')
     print(exp_description[args.type])
     print('---------------------------------------------------------------------')
     print('Model: {}'.format(args.model))
