@@ -21,11 +21,27 @@ networks  = {
 
 exp_description = {
     'base': 'Random seed initialisation',
-    'transfer': 'Transferred from pretrained model',
-    'meta': 'MAML'
+    'conf1': 'Transferred from Configuration 1',
+    'conf2': 'Transferred from Configuration 2',
+    'conf3': 'Transferred from Configuration 3',
 }
 
-BATCH_SIZE=32
+conf_params = {
+    'conf1': {
+        'percent_swap': 0,
+        'percent_damage': 0
+    },
+    'conf2': {
+        'percent_swap': 0,
+        'percent_damage': 0.95
+    },
+    'conf3': {
+        'percent_swap': 0.95,
+        'percent_damage': 0
+    },
+}
+
+BATCH_SIZE=64
 
 
 # ---------------------------------------------------
@@ -115,34 +131,19 @@ def main():
     parser.add_argument('--lr', type=float, default=0.001)
     parser.add_argument('--hidden_dim', type=int, default=300)
     parser.add_argument('--num_layers', type=int, default=5)
-    parser.add_argument('--N', type=int, default=50)
-    parser.add_argument('--n', type=int, default=30)
-    parser.add_argument('--p', type=float, default=0.5)
-    parser.add_argument('--std', type=float, default=1)
 
     args = parser.parse_args()
     assert args.model in ['gcn', 'sage', 'gin']
-    assert args.type in ['base', 'transfer', 'meta']
+    assert args.type in ['base', 'conf1', 'conf2', 'conf3']
     assert args.runs >= 1
     assert args.epochs >= 1
     assert args.lr > 0
     assert args.hidden_dim > 0
-    assert args.N > 0
-    assert args.n > 0
-    assert args.p >= 0 and args.p <= 1
-    assert args.std > 0
 
     # ---------------------------------------------------
     # Comet Experiment Tags
     # ---------------------------------------------------
     experiment_tags = [args.model, args.type]
-
-    if args.type == 'transfer':
-        experiment_tags.append('N={}'.format(args.N))
-        experiment_tags.append('n={}'.format(args.n))
-        experiment_tags.append('p={}'.format(args.p))
-        experiment_tags.append('std={}'.format(args.std))
-
 
     # ---------------------------------------------------
     # Model
@@ -167,13 +168,6 @@ def main():
     print('Number of epochs: {}'.format(args.epochs))
     print('Learning rate: {}'.format(args.lr))
     print()
-    if args.type == 'transfer':
-        print('Generator Parameters:')
-        print('N={}'.format(args.N))
-        print('n={}'.format(args.n))
-        print('p={}'.format(args.p))
-        print('std={}'.format(args.std))
-        print()
     print(model)
 
 
@@ -191,13 +185,15 @@ def main():
             # Random init
             model.reset_parameters()
 
-        elif args.type == 'transfer':
-            # Pretrain on other benchmark datasets
+        elif args.type in ['conf1', 'conf2', 'conf3']:
+            # Pretrain
             print('Generating source dataset')
-            params = [
-                {'N': args.N, 'n': args.n, 'p': args.p, 'mean': 0, 'std': args.std} for i in range(20)
-            ]
-            source_dataset, _ = generate_dataset(params)
+            source_dataset = generate_dataset(
+                n_classes=10,
+                n_per_class=100,
+                percent_swap=conf_params[args.type]['percent_swap'],
+                percent_damage=conf_params[args.type]['percent_damage']
+            )
             source_loader = DataLoader(source_dataset, batch_size=BATCH_SIZE, shuffle=True)
             print()
 
@@ -218,15 +214,10 @@ def main():
         experiment.log_parameters({
             'hidden_dim' : args.hidden_dim,
             'num_features' : 10,
-            'num_classes' : 20,
+            'num_classes' : 10,
             'learning_rate': args.lr,
             'num_epochs': args.epochs,
-            'generator_params': {
-                'N': args.N,
-                'n': args.n,
-                'p': args.p,
-                'std': args.std
-            }
+            'generator_params': conf_params[args.type]
         })
 
         # Target training
