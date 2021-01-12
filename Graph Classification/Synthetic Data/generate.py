@@ -5,6 +5,21 @@ from torch_geometric.utils import from_networkx, to_networkx
 from sklearn.datasets import make_classification
 import numpy as np
 import pandas as pd
+from copy import deepcopy
+
+def damage_data(data, percentage):
+    """
+    Helper method for damaging a portion of the node attribute matrix.
+    """
+    N = data.num_nodes
+    N_damage = int(N * percentage)
+    new_data = deepcopy(data)
+    # new_data.x = new_data.x.cpu()
+
+    idx_damage = np.random.choice(N, N_damage, replace=False)
+    new_data.x[idx_damage] = torch.randn(N_damage, data.num_features, dtype=new_data.x.dtype)
+
+    return new_data
 
 
 def generate_graph(n, m, label):
@@ -58,7 +73,7 @@ def create_graphs_for_class(dataframe, label, m):
     return datapoints
 
 
-def generate_dataset(n_classes=10, n_per_class=100, n_features=10, n_informative=8, percent_swap=0, damage_attr=False):
+def generate_dataset(n_classes=10, n_per_class=100, n_features=10, n_informative=8, percent_swap=0, percent_damage=0):
     """
     Generates a dataset for graph classification.
     Generates each class using create_graphs_for_class and attributes using sklearn.datasets.make_classification.
@@ -109,16 +124,16 @@ def generate_dataset(n_classes=10, n_per_class=100, n_features=10, n_informative
         num_to_swap = int(percent_swap * len(dataset))
 
         to_swap = zip(
-            np.random.choice(len(dataset), num_to_swap),
-            np.random.choice(len(dataset), num_to_swap),
+            np.random.choice(len(dataset), num_to_swap, replace=False),
+            np.random.choice(len(dataset), num_to_swap, replace=False),
         )
 
         for a,b in to_swap:
             dataset[a].edge_index, dataset[b].edge_index = dataset[b].edge_index, dataset[a].edge_index
 
     # damage attribute matrix
-    if damage_attr:
-        for d in dataset:
-            d.x = torch.randn((d.num_nodes, n_features))
+    if percent_damage > 0:
+        for i, d in enumerate(dataset):
+            dataset[i] = damage_data(d, percent_damage)
 
     return dataset
