@@ -106,7 +106,7 @@ def generate_dataset(n_classes=10, n_per_class=100, n_features=10, n_informative
 
     # swap graph adjacencies
     if percent_swap > 0:
-        num_to_swap = int(0.8 * len(dataset))
+        num_to_swap = int(percent_swap * len(dataset))
 
         to_swap = zip(
             np.random.choice(len(dataset), num_to_swap),
