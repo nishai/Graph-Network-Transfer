@@ -127,9 +127,9 @@ def main():
     parser.add_argument('--type', type=str, default='base')
     parser.add_argument('--runs', type=int, default=10)
     parser.add_argument('--epochs', type=int, default=500)
-    parser.add_argument('--lr', type=float, default=0.001)
+    parser.add_argument('--lr', type=float, default=0.01)
     parser.add_argument('--hidden_dim', type=int, default=50)
-    parser.add_argument('--num_layers', type=int, default=5)
+    parser.add_argument('--num_layers', type=int, default=3)
 
     args = parser.parse_args()
     assert args.model in ['gcn', 'sage', 'gin']
@@ -150,7 +150,7 @@ def main():
     model = networks[args.model](
         in_channels=10,
         hidden_channels=args.hidden_dim,
-        out_channels=20,
+        out_channels=10,
         num_conv_layers=args.num_layers
     ).to(device)
 
@@ -197,7 +197,7 @@ def main():
             print()
 
             model.reset_parameters()
-            source_optimiser = torch.optim.Adam(model.parameters(), lr=0.001)
+            source_optimiser = torch.optim.Adam(model.parameters(), lr=0.01)
 
             print('Pre-training model on generated dataset')
             best_acc = pretrain(model, device, source_loader, source_optimiser)
