@@ -116,7 +116,7 @@ def eval(model, device, loader, evaluator):
 def pretrain_molbbbp(model, device, evaluator, optimizer, model_name, epochs=100):
     best_val_perf = 0.0
 
-    for epoch in tqdm(range(100)):
+    for epoch in tqdm(range(epochs)):
         train_loss = train(model, device, train_loader, optimizer)
 
         valid_perf = eval(model, device, valid_loader, evaluator)
@@ -132,7 +132,7 @@ def pretrain_molbbbp(model, device, evaluator, optimizer, model_name, epochs=100
 def pretrain_source_molhiv(model, device, evaluator, optimizer, model_name, epochs=100):
     best_perf = 0.0
 
-    for epoch in tqdm(range(100)):
+    for epoch in tqdm(range(epochs)):
         train_loss = train(model, device, source_loader, optimizer)
         perf = eval(model, device, source_loader, evaluator)
         rocauc = perf[source_dataset.eval_metric]
