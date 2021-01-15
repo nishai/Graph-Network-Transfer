@@ -4,6 +4,8 @@ This repository contains all my code for my MSc Dissertation at Wits University 
 
 __How does relational knowledge generalise? An analysis of transfer learning for graph neural networks__.
 
+<img src="pipeline.jpg" width="75%"/>
+
 ## Repo structure 🧑🏾‍💻
 ```
 root
