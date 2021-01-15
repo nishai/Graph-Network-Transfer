@@ -7,7 +7,6 @@ from torch_geometric.data import DataLoader
 from torch.utils.data import Dataset
 from torch_geometric.data import Data
 from models import *
-from pytorchtools import EarlyStopping
 from ogb.graphproppred import PygGraphPropPredDataset , Evaluator
 from tqdm import tqdm
 
