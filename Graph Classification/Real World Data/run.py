@@ -139,9 +139,9 @@ def pretrain_molbbbp(model, device, evaluator, optimizer, model_name, epochs=100
         for i, d in enumerate(bbbp_dataset):
             new_dataset.append(damage_data(d))
 
-        train_loader = DataLoader(bbbp_dataset[bbbp_split_idx["train"]], batch_size=32, shuffle=True)
-        valid_loader = DataLoader(bbbp_dataset[bbbp_split_idx["valid"]], batch_size=32, shuffle=False)
-        test_loader = DataLoader(bbbp_dataset[bbbp_split_idx["test"]], batch_size=32, shuffle=False)
+        train_loader = DataLoader( [new_dataset[idx] for idx in bbbp_split_idx["train"] ], batch_size=32, shuffle=True)
+        valid_loader = DataLoader( [new_dataset[idx] for idx in bbbp_split_idx["valid"] ], batch_size=32, shuffle=False)
+        test_loader = DataLoader( [new_dataset[idx] for idx in bbbp_split_idx["test"] ], batch_size=32, shuffle=False)
 
     for epoch in tqdm(range(epochs)):
         train_loss = train(model, device, train_loader, optimizer)
