@@ -156,8 +156,17 @@ def pretrain_molbbbp(model, device, evaluator, optimizer, model_name, epochs=100
     return best_val_perf
 
 
-def pretrain_source_molhiv(model, device, evaluator, optimizer, model_name, epochs=100):
+def pretrain_source_molhiv(model, device, evaluator, optimizer, model_name, epochs=100, damage=False):
     best_perf = 0.0
+    global source_dataset
+
+    if damage:
+        print('Damaging data...')
+        new_dataset = []
+        for i, d in enumerate(source_dataset):
+            new_dataset.append(damage_data(d))
+
+        source_loader = DataLoader(new_dataset, batch_size=BATCH_SIZE, shuffle=True)
 
     for epoch in tqdm(range(epochs)):
         train_loss = train(model, device, source_loader, optimizer)
@@ -239,13 +248,14 @@ def main():
                 torch.load( 'molbbbp_models/{}_molbbbp.pth'.format(args.model) )
             )
 
-        elif args.type == 'self-transfer':
+        elif args.type in ['self-transfer', 'self-transfer-damaged']:
             # Pretrain on Mol-HIV Source Split
             model.reset_parameters()
             source_optimiser = optim.Adam(model.parameters(), lr=0.001)
+            to_damage = args.type == 'self-transfer-damaged'
 
             print('Pretraining model on Mol-HIV Source Task...')
-            best_val_acc = pretrain_source_molhiv(model, device, evaluator, source_optimiser, args.model)
+            best_val_acc = pretrain_source_molhiv(model, device, evaluator, source_optimiser, args.model, damage=to_damage)
             print('Validation accuracy: {:.3}'.format(best_val_acc))
 
             model.load_state_dict(
