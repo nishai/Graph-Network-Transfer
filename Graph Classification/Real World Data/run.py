@@ -9,6 +9,8 @@ from torch_geometric.data import Data
 from models import *
 from ogb.graphproppred import PygGraphPropPredDataset , Evaluator
 from tqdm import tqdm
+from copy import deepcopy
+import numpy as np
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -27,8 +29,9 @@ layers  = {
 exp_description = {
     'base': 'Random seed initialisation',
     'transfer': 'Transferred from pretrained Mol-BBBP model',
+    'transfer-damaged': 'Transferred from pretrained Mol-BBBP model (Damaged features)',
     'self-transfer': 'Transferred from Mol-HIV source split',
-    'meta': 'MAML'
+    'self-transfer-damaged': 'Transferred from Mol-HIV source split (Damaged features)'
 }
 
 # ---------------------------------------------------
@@ -59,6 +62,21 @@ target_loader = DataLoader(target_dataset, batch_size=BATCH_SIZE, shuffle=True)
 
 evaluator = Evaluator('ogbg-molhiv')
 cls_criterion = torch.nn.BCEWithLogitsLoss()
+
+# ---------------------------------------------------
+# Methods
+# ---------------------------------------------------
+
+def damage_data(data):
+    """
+    Helper method for damaging a portion of the node attribute matrix.
+    """
+    N = data.num_nodes
+    new_data = deepcopy(data)
+
+    new_data.x = torch.randn(N, data.num_features)
+
+    return new_data
 
 
 def train(model, device, loader, optimizer):
@@ -112,8 +130,19 @@ def eval(model, device, loader, evaluator):
     return evaluator.eval(input_dict)
 
 
-def pretrain_molbbbp(model, device, evaluator, optimizer, model_name, epochs=100):
+def pretrain_molbbbp(model, device, evaluator, optimizer, model_name, epochs=100, damage=False):
     best_val_perf = 0.0
+
+    if damage:
+        print('Damaging data...')
+        bbbp_dataset = list(bbbp_dataset)
+        for i, d in enumerate(bbbp_dataset):
+            bbbp_dataset[i]  = damage_data(d)
+
+        bbbp_dataset = Dataset(bbbp_dataset)
+        train_loader = DataLoader(bbbp_dataset[bbbp_split_idx["train"]], batch_size=32, shuffle=True)
+        valid_loader = DataLoader(bbbp_dataset[bbbp_split_idx["valid"]], batch_size=32, shuffle=False)
+        test_loader = DataLoader(bbbp_dataset[bbbp_split_idx["test"]], batch_size=32, shuffle=False)
 
     for epoch in tqdm(range(epochs)):
         train_loss = train(model, device, train_loader, optimizer)
@@ -154,8 +183,8 @@ def main():
     parser.add_argument('--num_layers', type=int, default=5)
 
     args = parser.parse_args()
-    assert args.model in ['gcn', 'sage', 'gat', 'gin']
-    assert args.type in ['base', 'transfer', 'self-transfer', 'meta']
+    assert args.model in ['gcn', 'sage', 'gin']
+    assert args.type in ['base', 'transfer', 'transfer-damaged', 'self-transfer', 'self-transfer-damaged']
     assert args.runs >= 1
     assert args.epochs >= 1
     assert args.lr > 0
@@ -197,13 +226,14 @@ def main():
         if args.type == 'base':
             model.reset_parameters()
 
-        elif args.type == 'transfer':
+        elif args.type in ['transfer', 'transfer-damaged']:
             # Pretrain on Mol-BBBP
             model.reset_parameters()
             bbbp_optimiser = optim.Adam(model.parameters(), lr=0.001)
+            to_damage = args.type == 'transfer-damaged'
 
             print('Pretraining model on Mol-BBBP...')
-            best_val_acc = pretrain_molbbbp(model, device, bbbp_evaluator, bbbp_optimiser, args.model)
+            best_val_acc = pretrain_molbbbp(model, device, bbbp_evaluator, bbbp_optimiser, args.model, damage=to_damage)
             print('Validation accuracy: {:.3}'.format(best_val_acc))
 
             model.load_state_dict(
