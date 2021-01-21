@@ -9,7 +9,7 @@ from torch_geometric.data import Data
 from models import *
 from ogb.graphproppred import PygGraphPropPredDataset , Evaluator
 from tqdm import tqdm
-from copy import deepcopy
+from copy import deepcopy, copy
 import numpy as np
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -72,8 +72,7 @@ def damage_data(data):
     Helper method for damaging a portion of the node attribute matrix.
     """
     N = data.num_nodes
-    new_data = deepcopy(data)
-
+    new_data = copy(data)
     new_data.x = torch.randn(N, data.num_features)
 
     return new_data
@@ -132,14 +131,14 @@ def eval(model, device, loader, evaluator):
 
 def pretrain_molbbbp(model, device, evaluator, optimizer, model_name, epochs=100, damage=False):
     best_val_perf = 0.0
+    global bbbp_dataset
 
     if damage:
         print('Damaging data...')
-        bbbp_dataset = list(bbbp_dataset)
+        new_dataset = []
         for i, d in enumerate(bbbp_dataset):
-            bbbp_dataset[i]  = damage_data(d)
+            new_dataset.append(damage_data(d))
 
-        bbbp_dataset = Dataset(bbbp_dataset)
         train_loader = DataLoader(bbbp_dataset[bbbp_split_idx["train"]], batch_size=32, shuffle=True)
         valid_loader = DataLoader(bbbp_dataset[bbbp_split_idx["valid"]], batch_size=32, shuffle=False)
         test_loader = DataLoader(bbbp_dataset[bbbp_split_idx["test"]], batch_size=32, shuffle=False)
