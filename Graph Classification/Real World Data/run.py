@@ -34,6 +34,8 @@ exp_description = {
     'self-transfer-damaged': 'Transferred from Mol-HIV source split (Damaged features)'
 }
 
+BATCH_SIZE = 64
+
 # ---------------------------------------------------
 # Data
 # ---------------------------------------------------
@@ -42,9 +44,9 @@ exp_description = {
 bbbp_dataset = PygGraphPropPredDataset(name='ogbg-molbbbp')
 bbbp_split_idx = bbbp_dataset.get_idx_split()
 
-train_loader = DataLoader(bbbp_dataset[bbbp_split_idx["train"]], batch_size=32, shuffle=True)
-valid_loader = DataLoader(bbbp_dataset[bbbp_split_idx["valid"]], batch_size=32, shuffle=False)
-test_loader = DataLoader(bbbp_dataset[bbbp_split_idx["test"]], batch_size=32, shuffle=False)
+train_loader = DataLoader(bbbp_dataset[bbbp_split_idx["train"]], batch_size=BATCH_SIZE, shuffle=True)
+valid_loader = DataLoader(bbbp_dataset[bbbp_split_idx["valid"]], batch_size=BATCH_SIZE, shuffle=False)
+test_loader = DataLoader(bbbp_dataset[bbbp_split_idx["test"]], batch_size=BATCH_SIZE, shuffle=False)
 
 bbbp_evaluator = Evaluator('ogbg-molbbbp')
 
@@ -54,8 +56,6 @@ dataset = PygGraphPropPredDataset(name='ogbg-molhiv')
 split_idx = len(dataset) // 2
 source_dataset = dataset[:split_idx]
 target_dataset = dataset[split_idx:]
-
-BATCH_SIZE = 32
 
 source_loader = DataLoader(source_dataset, batch_size=BATCH_SIZE, shuffle=True)
 target_loader = DataLoader(target_dataset, batch_size=BATCH_SIZE, shuffle=True)
@@ -139,9 +139,9 @@ def pretrain_molbbbp(model, device, evaluator, optimizer, model_name, epochs=100
         for i, d in enumerate(bbbp_dataset):
             new_dataset.append(damage_data(d))
 
-        train_loader = DataLoader( [new_dataset[idx] for idx in bbbp_split_idx["train"] ], batch_size=32, shuffle=True)
-        valid_loader = DataLoader( [new_dataset[idx] for idx in bbbp_split_idx["valid"] ], batch_size=32, shuffle=False)
-        test_loader = DataLoader( [new_dataset[idx] for idx in bbbp_split_idx["test"] ], batch_size=32, shuffle=False)
+        train_loader = DataLoader( [new_dataset[idx] for idx in bbbp_split_idx["train"] ], batch_size=BATCH_SIZE, shuffle=True)
+        valid_loader = DataLoader( [new_dataset[idx] for idx in bbbp_split_idx["valid"] ], batch_size=BATCH_SIZE, shuffle=False)
+        test_loader = DataLoader( [new_dataset[idx] for idx in bbbp_split_idx["test"] ], batch_size=BATCH_SIZE, shuffle=False)
 
     for epoch in tqdm(range(epochs)):
         train_loss = train(model, device, train_loader, optimizer)
