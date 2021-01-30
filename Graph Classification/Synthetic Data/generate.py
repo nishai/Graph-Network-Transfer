@@ -95,7 +95,7 @@ def generate_dataset(n_classes=10, n_per_class=100, n_features=10, n_informative
             Default 0.
             Range = [0, 1].
             Higher value = higher structural inertia.
-        damage_attr:
+        percent_damage:
             Whether to replace node attributes with random values.
             Default False.
             Higher value = higher attribute inertia.
