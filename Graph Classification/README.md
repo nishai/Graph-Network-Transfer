@@ -10,6 +10,7 @@ The experiment runs can be found [here](https://www.comet.ml/graph-net-experimen
 
 ## Synthetic Data 🗿
 
-Experiments are run on generated datasets with community structure. A custom generator is written to create the datasets
+Experiments are run on generated datasets with community structure. A custom generator is written to create the datasets:
+![](generation.jpg)
 
 The experiment runs can be found [here](https://www.comet.ml/graph-net-experiments/graph-classification-synthetic).
