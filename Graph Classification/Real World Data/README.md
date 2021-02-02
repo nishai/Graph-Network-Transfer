@@ -17,8 +17,8 @@ We perform five sets of transfer learning experiments:
 | *1* | None                                     | `base`                            |
 | *2* | BBBP                                     | `transfer`                        |
 | *3* | BBBP [Damaged features]                  | `transfer-damaged`                |
-| *4* | HIV _(Source split)_                     | `self-transfer-damaged`           |
-| *5* | HIV _(Source split)_ [Damaged features]  | `self-transfer-damaged-new-layer` |
+| *4* | HIV _(Source split)_                     | `self-transfer`                   |
+| *5* | HIV _(Source split)_ [Damaged features]  | `self-transfer-damaged`           |
 
 ## Running experiments🏃🏽‍♀️
 
