@@ -197,7 +197,7 @@ def main():
             print()
 
             model.reset_parameters()
-            source_optimiser = torch.optim.Adam(model.parameters(), lr=0.01)
+            source_optimiser = torch.optim.Adam(model.parameters(), lr=args.lr)
 
             print('Pre-training model on generated dataset')
             best_acc = pretrain(model, device, source_loader, source_optimiser)
