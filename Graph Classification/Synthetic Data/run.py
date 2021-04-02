@@ -27,22 +27,22 @@ exp_description = {
 }
 
 conf_params = {
-    'conf1': {
-        'percent_swap': 0.1,
-        'percent_damage': 0
-    },
-    'conf2': {
-        'percent_swap': 0.1,
+    'conf1': { # WW
+        'percent_swap': 0.95,
         'percent_damage': 0.95
     },
-    'conf3': {
+    'conf2': { #SW
+        'percent_swap': 0.92,
+        'percent_damage': 0.95
+    },
+    'conf3': { #WS
         'percent_swap': 0.95,
-        'percent_damage': 0
+        'percent_damage': 0.92
     },
     'base': 'N/A'
 }
 
-BATCH_SIZE=64
+BATCH_SIZE=32
 
 
 # ---------------------------------------------------
