@@ -126,7 +126,7 @@ def main():
     parser.add_argument('--model', type=str, default='gcn')
     parser.add_argument('--type', type=str, default='base')
     parser.add_argument('--runs', type=int, default=10)
-    parser.add_argument('--epochs', type=int, default=500)
+    parser.add_argument('--epochs', type=int, default=1000)
     parser.add_argument('--lr', type=float, default=0.01)
     parser.add_argument('--hidden_dim', type=int, default=50)
     parser.add_argument('--num_layers', type=int, default=3)
