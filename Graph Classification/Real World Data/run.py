@@ -11,6 +11,7 @@ from ogb.graphproppred import PygGraphPropPredDataset , Evaluator
 from tqdm import tqdm
 from copy import deepcopy, copy
 import numpy as np
+from sklearn.model_selection import train_test_split
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -53,9 +54,10 @@ bbbp_evaluator = Evaluator('ogbg-molbbbp')
 # Mol-HIV
 dataset = PygGraphPropPredDataset(name='ogbg-molhiv')
 
-split_idx = len(dataset) // 2
-source_dataset = dataset[:split_idx]
-target_dataset = dataset[split_idx:]
+idx = torch.load('index')
+source_idx, target_idx = idx['source'], idx['target']
+source_dataset = dataset[source_idx]
+target_dataset = dataset[target_idx]
 
 source_loader = DataLoader(source_dataset, batch_size=BATCH_SIZE, shuffle=True)
 target_loader = DataLoader(target_dataset, batch_size=BATCH_SIZE, shuffle=True)
@@ -159,6 +161,7 @@ def pretrain_molbbbp(model, device, evaluator, optimizer, model_name, epochs=100
 def pretrain_source_molhiv(model, device, evaluator, optimizer, model_name, epochs=100, damage=False):
     best_perf = 0.0
     global source_dataset
+    global source_loader
 
     if damage:
         print('Damaging data...')
