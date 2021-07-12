@@ -133,7 +133,7 @@ def eval(model, device, loader, evaluator):
 
 def pretrain_molbbbp(model, device, evaluator, optimizer, model_name, epochs=100, damage=False):
     best_val_perf = 0.0
-    global bbbp_dataset
+    global bbbp_dataset, train_loader, valid_loader, test_loader
 
     if damage:
         print('Damaging data...')
