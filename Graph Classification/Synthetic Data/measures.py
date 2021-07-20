@@ -11,7 +11,7 @@ def inertia(dataset, mode='structure'):
     if mode == 'structure':
         x = torch.tensor([avg_degree(d) for d in dataset])
     elif mode == 'attributes':
-        x = torch.stack([d.x.mean(axis=0) for d in dataset])
+        x = torch.stack([torch.Tensor.float(d.x).mean(axis=0) for d in dataset])
 
     g = x.mean(axis=0)  # cluster centroid
 
